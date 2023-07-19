@@ -1,46 +1,34 @@
 #!/usr/bin/env python3
 """
-    web mod
+Implements an expiring web cache and tracker
 """
-import redis
-import requests
 from typing import Callable
 from functools import wraps
+import redis
+import requests
+redis_client = redis.Redis()
 
 
-def count_url(func: Callable) -> Callable:
-    """ decorator function """
-    @wraps(func)
-    def inner(*args, **kwargs):
-        red_instance = redis.Redis()
-
-        if args:
-            key = "count:{}".format(args[0])
-        else:
-            key = "count:{}".format(kwargs.get('url'))
-
-        if not red_instance.exists([key]):
-            red_instance.setex(key, 10, 1)
-        else:
-            red_instance.incr(key, 1)
-        return func(*args, **kwargs)
-    return inner
+def url_count(method: Callable) -> Callable:
+    """counts how many times an url is accessed"""
+    @wraps(method)
+    def wrapper(*args, **kwargs):
+        url = args[0]
+        redis_client.incr(f"count:{url}")
+        cached = redis_client.get(f'{url}')
+        if cached:
+            return cached.decode('utf-8')
+        redis_client.setex(f'{url}, 10, {method(url)}')
+        return method(*args, **kwargs)
+    return wrapper
 
 
-@count_url
+@url_count
 def get_page(url: str) -> str:
-    """
-        uses the requests module to obtain the HTML content of a
-        particular URL and returns it
-    """
-    r = requests.get(url)
-    return r.text
+    """get a page and cache value"""
+    response = requests.get(url)
+    return response.text
 
 
 if __name__ == "__main__":
-    inst = redis.Redis()
-    url = "https://intranet.alxswe.com/projects/1234#task-11668"
-    print(get_page(url))
-    # get_page(url)
-    # count = inst.get("count{}".format(url))
-    # print(count.decode("utf-8"))
+    get_page('http://slowwly.robertomurray.co.uk')
