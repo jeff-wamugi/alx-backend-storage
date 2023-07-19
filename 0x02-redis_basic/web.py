@@ -1,21 +1,46 @@
 #!/usr/bin/env python3
 """
-create a web cach
+    web mod
 """
 import redis
 import requests
-rc = redis.Redis()
-count = 0
+from typing import Callable
+from functools import wraps
 
 
+def count_url(func: Callable) -> Callable:
+    """ decorator function """
+    @wraps(func)
+    def inner(*args, **kwargs):
+        red_instance = redis.Redis()
+
+        if args:
+            key = "count:{}".format(args[0])
+        else:
+            key = "count:{}".format(kwargs.get('url'))
+
+        if not red_instance.exists([key]):
+            red_instance.setex(key, 10, 1)
+        else:
+            red_instance.incr(key, 1)
+        return func(*args, **kwargs)
+    return inner
+
+
+@count_url
 def get_page(url: str) -> str:
-    """ get a page and cach value"""
-    rc.set(f"cached:{url}", count)
-    resp = requests.get(url)
-    rc.incr(f"count:{url}")
-    rc.setex(f"cached:{url}", 10, rc.get(f"cached:{url}"))
-    return resp.text
+    """
+        uses the requests module to obtain the HTML content of a
+        particular URL and returns it
+    """
+    r = requests.get(url)
+    return r.text
 
 
 if __name__ == "__main__":
-    get_page('http://slowwly.robertomurray.co.uk')
+    inst = redis.Redis()
+    url = "https://intranet.alxswe.com/projects/1234#task-11668"
+    print(get_page(url))
+    # get_page(url)
+    # count = inst.get("count{}".format(url))
+    # print(count.decode("utf-8"))
